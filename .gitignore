@@ -1,0 +1,14 @@
+# Secrets
+.env
+credentials.json
+token.json
+
+# Outputs
+.out/
+.state/
+*.ics
+
+# Python
+__pycache__/
+*.pyc
+.venv
