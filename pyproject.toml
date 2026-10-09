@@ -13,3 +13,39 @@ dependencies = [
     "pytz>=2026.5",
     "requests>=2.34.2",
 ]
+
+[dependency-groups]
+dev = [
+    "google-api-python-client-stubs>=1.40.0",
+    "mypy>=2.4.0",
+    "types-python-dateutil>=2.9.0.20260807",
+    "types-requests>=2.33.0.20261006",
+]
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+warn_unreachable = true
+disallow_any_unimported = true
+disallow_any_expr = true
+disallow_any_decorated = true
+disallow_any_explicit = true
+local_partial_types = true
+strict_bytes = true
+extra_checks = true
+enable_error_code = [
+    "deprecated",
+    "exhaustive-match",
+    "explicit-override",
+    "ignore-without-code",
+    "mutable-override",
+    "possibly-undefined",
+    "redundant-expr",
+    "redundant-self",
+    "truthy-bool",
+    "truthy-iterable",
+    "unimported-reveal",
+    "unused-awaitable",
+    "unused-ignore",
+]
+mypy_path = "typings"

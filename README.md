@@ -43,6 +43,17 @@ Each task becomes a calendar event linked to its project, with reminders for upc
 
 ---
 
+### Type checking
+
+The code is checked with [mypy](https://mypy.readthedocs.io/) in its strictest configuration (see `[tool.mypy]` in `pyproject.toml`).
+Minimal stubs for untyped dependencies (`ics`, `google_auth_oauthlib`) live in `typings/`.
+
+```bash
+uv run mypy
+```
+
+---
+
 ### Automation (optional)
 
 Add a cron job to run every 15 minutes:
