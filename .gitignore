@@ -1,5 +1,7 @@
 # Secrets
 .env
+.env.*
+!.env.example
 credentials.json
 token.json
 
@@ -10,5 +12,13 @@ token.json
 
 # Python
 __pycache__/
-*.pyc
-.venv
+*.py[cod]
+.venv/
+
+# Tooling
+.mypy_cache/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
