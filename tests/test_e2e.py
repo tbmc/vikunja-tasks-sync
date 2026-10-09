@@ -213,6 +213,17 @@ def test_failed_upsert_is_reported_and_retried_next_run(
     assert len(calendar_events(google)) == 4
 
 
+def test_sync_with_api_token_skips_login(
+    tasks: FakeVikunja, google: FakeCalendarService, live_settings: Settings
+) -> None:
+    tasks.token = live_settings.vikunja_api_token = "tk_abc"
+    live_settings.vikunja_password = "wrong"
+    run(live_settings)
+    assert len(calendar_events(google)) == 4
+    assert all(r.method == "GET" for r in tasks.requests)
+    assert all(r.authorization == "Bearer tk_abc" for r in tasks.requests)
+
+
 def test_bad_credentials_abort_before_touching_google(
     tasks: FakeVikunja, google: FakeCalendarService, live_settings: Settings
 ) -> None:

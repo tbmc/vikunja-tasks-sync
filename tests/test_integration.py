@@ -11,6 +11,7 @@ from vikunja_sync.vikunja import (
     VikunjaTask,
     fetch_projects,
     fetch_tasks,
+    get_token,
     login,
 )
 
@@ -55,6 +56,29 @@ def test_login_missing_config_exits_without_request(
     with pytest.raises(SystemExit, match="must be set"):
         login(live_settings)
     assert vikunja.requests == []
+
+
+def test_get_token_uses_api_token_without_request(
+    vikunja: FakeVikunja, live_settings: Settings
+) -> None:
+    live_settings.vikunja_api_token = "tk_abc"
+    live_settings.vikunja_password = ""
+    assert get_token(live_settings) == "tk_abc"
+    assert vikunja.requests == []
+
+
+def test_get_token_falls_back_to_login(
+    vikunja: FakeVikunja, live_settings: Settings
+) -> None:
+    assert get_token(live_settings) == "jwt-token-123"
+    assert [(r.method, r.path) for r in vikunja.requests] == [("POST", "/api/v1/login")]
+
+
+def test_get_token_missing_api_base_exits(settings: Settings) -> None:
+    settings.vikunja_api_base = ""
+    settings.vikunja_api_token = "tk_abc"
+    with pytest.raises(SystemExit, match="must be set"):
+        get_token(settings)
 
 
 def test_fetch_projects(vikunja: FakeVikunja, live_settings: Settings) -> None:

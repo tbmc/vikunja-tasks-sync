@@ -72,6 +72,15 @@ class LoginResponse(BaseModel):
 TASKS = TypeAdapter(list[VikunjaTask] | TaskList)
 
 
+def get_token(settings: Settings) -> str:
+    """The configured API token if any, else a fresh JWT from `login`."""
+    if settings.vikunja_api_token:
+        if not settings.vikunja_api_base:
+            raise SystemExit("VIKUNJA_API_BASE must be set in .env")
+        return settings.vikunja_api_token
+    return login(settings)
+
+
 def login(settings: Settings) -> str:
     """
     POST /login with {"username": "...", "password": "..."}
@@ -83,7 +92,8 @@ def login(settings: Settings) -> str:
         or not settings.vikunja_password
     ):
         raise SystemExit(
-            "VIKUNJA_API_BASE, VIKUNJA_USERNAME and VIKUNJA_PASSWORD must be set in .env"
+            "VIKUNJA_API_BASE and either VIKUNJA_API_TOKEN or"
+            " VIKUNJA_USERNAME and VIKUNJA_PASSWORD must be set in .env"
         )
 
     payload = LoginRequest(

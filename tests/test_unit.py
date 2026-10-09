@@ -114,6 +114,7 @@ def test_load_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(name, raising=False)
     settings = load_settings()
     assert settings == Settings(
+        vikunja_api_token=settings.vikunja_api_token,
         vikunja_username=settings.vikunja_username,
         vikunja_password=settings.vikunja_password,
     )

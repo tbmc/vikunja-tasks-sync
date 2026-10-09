@@ -71,8 +71,8 @@ def ensure_output_dirs(settings: Settings) -> None:
 def run(settings: Settings) -> None:
     ensure_output_dirs(settings)
 
-    # Login to Vikunja (fresh JWT)
-    token = vikunja.login(settings)
+    # API token, or login to Vikunja (fresh JWT)
+    token = vikunja.get_token(settings)
 
     state = load_state(settings.state_file)
     service = google_service(settings)

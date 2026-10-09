@@ -27,7 +27,7 @@ Each task becomes a calendar event linked to its project, with reminders for upc
    cp .env.example .env
    ```
 
-   Fill in your Vikunja URL, username, and password.
+   Fill in your Vikunja URL and either an API token (`VIKUNJA_API_TOKEN`, created in Vikunja under *Settings → API Tokens* with read access to projects and tasks) or your username and password.
 3. **Install dependencies** (requires [uv](https://docs.astral.sh/uv/) and Python 3.14+)
 
    ```bash
@@ -80,7 +80,7 @@ The sync runs once and exits; schedule it with cron, e.g. every 15 minutes:
 The `vikunja_sync` package (all data structures are [pydantic](https://docs.pydantic.dev/) models):
 
 * `config.py`: `Settings` model, validated from the environment
-* `vikunja.py`: Vikunja API client (login, projects, tasks)
+* `vikunja.py`: Vikunja API client (API token or login, projects, tasks)
 * `google_calendar.py`: Google Calendar payload models, typed client over `googleapiclient`, OAuth and calendar/event helpers
 * `events.py`: task → event conversion (dates, summary, reminders)
 * `state.py`: local task → event mapping (`STATE_FILE`)

@@ -34,6 +34,8 @@ class Settings(BaseModel):
     )
 
     vikunja_api_base: Annotated[str, AfterValidator(strip_trailing_slash)] = ""
+    # API token (Settings > API Tokens); takes precedence over username/password
+    vikunja_api_token: str = ""
     vikunja_username: str = ""
     vikunja_password: str = ""
     vikunja_verify_ssl: bool = True
