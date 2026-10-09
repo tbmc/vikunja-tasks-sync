@@ -24,11 +24,12 @@ FROM python:3.14-slim AS runtime
 RUN useradd --create-home --uid 1000 app
 
 COPY --from=builder /opt/venv /opt/venv
-COPY vikunja_sync.py /app/vikunja_sync.py
+COPY vikunja_sync /app/vikunja_sync
 
 # OPENSSL_armcap=0: skip OpenSSL's ARM CPU feature probing, which crashes (SIGILL)
 # in the cryptography wheels on Apple M4 hosts (SME) under Docker. Ignored on x86_64.
 ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONPATH=/app \
     PYTHONUNBUFFERED=1 \
     OPENSSL_armcap=0
 
@@ -39,4 +40,4 @@ VOLUME ["/data"]
 
 USER app
 
-CMD ["python", "/app/vikunja_sync.py"]
+CMD ["python", "-m", "vikunja_sync"]

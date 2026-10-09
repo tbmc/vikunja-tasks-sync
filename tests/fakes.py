@@ -1,22 +1,29 @@
 """Test doubles: a real HTTP server faking the Vikunja API, and an in-memory Google Calendar."""
 
-import json
 import re
 import threading
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import cast, override
+from typing import override
 from urllib.parse import parse_qs, urlsplit
 
-from vikunja_sync import (
+from pydantic import BaseModel, ConfigDict, RootModel
+
+from vikunja_sync.google_calendar import (
     CalendarBody,
     CalendarListEntry,
     CalendarListPage,
     CreatedEvent,
     EventBody,
-    JsonObject,
+)
+from vikunja_sync.vikunja import (
+    LoginRequest,
+    LoginResponse,
+    Project,
+    Projects,
+    TaskList,
+    VikunjaTask,
 )
 
 # ------------------
@@ -25,34 +32,45 @@ from vikunja_sync import (
 API_PREFIX = "/api/v1"
 
 
-@dataclass
-class RecordedRequest:
+class RecordedRequest(BaseModel):
     method: str
     path: str
     authorization: str | None
 
 
-@dataclass
-class FakeVikunja:
+class ApiMessage(BaseModel):
+    message: str
+
+
+class Tasks(RootModel[list[VikunjaTask]]):
+    pass
+
+
+class FakeVikunja(BaseModel):
     """In-memory Vikunja data served over HTTP by `serve_vikunja`."""
+
+    model_config = ConfigDict(validate_assignment=True)
 
     username: str = "alice"
     password: str = "s3cret"
     token: str = "jwt-token-123"
+    # Name of the token field in the login response (anything else = token missing)
     token_field: str = "token"
-    projects: list[JsonObject] = field(default_factory=list)
-    tasks: list[JsonObject] = field(default_factory=list)
+    projects: list[Project] = []
+    tasks: list[VikunjaTask] = []
     page_size: int = 2
     # Wrap /projects/{id}/tasks responses in {"tasks": [...]} like some Vikunja versions do
     wrap_project_tasks: bool = False
-    requests: list[RecordedRequest] = field(default_factory=list)
+    requests: list[RecordedRequest] = []
+    # API base URL, set while served by `serve_vikunja`
+    base_url: str = ""
 
-    def tasks_page(self, page: int) -> list[JsonObject]:
+    def tasks_page(self, page: int) -> list[VikunjaTask]:
         start = (page - 1) * self.page_size
         return self.tasks[start : start + self.page_size]
 
-    def project_tasks(self, project_id: int) -> list[JsonObject]:
-        return [t for t in self.tasks if t.get("project_id") == project_id]
+    def project_tasks(self, project_id: int) -> list[VikunjaTask]:
+        return [t for t in self.tasks if t.project_id == project_id]
 
 
 def _make_handler(fake: FakeVikunja) -> type[BaseHTTPRequestHandler]:
@@ -63,8 +81,8 @@ def _make_handler(fake: FakeVikunja) -> type[BaseHTTPRequestHandler]:
         ) -> None:  # silence test output
             pass
 
-        def _send(self, status: int, payload: object) -> None:
-            body = json.dumps(payload).encode()
+        def _send(self, status: int, payload: BaseModel, *, include: set[str] | None = None) -> None:
+            body = payload.model_dump_json(include=include).encode()
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
@@ -74,58 +92,59 @@ def _make_handler(fake: FakeVikunja) -> type[BaseHTTPRequestHandler]:
         def _record(self) -> None:
             fake.requests.append(
                 RecordedRequest(
-                    self.command, self.path, self.headers.get("Authorization")
+                    method=self.command,
+                    path=self.path,
+                    authorization=self.headers.get("Authorization"),
                 )
             )
 
         def do_POST(self) -> None:
             self._record()
             if self.path != f"{API_PREFIX}/login":
-                self._send(404, {"message": "not found"})
+                self._send(404, ApiMessage(message="not found"))
                 return
             length = int(self.headers.get("Content-Length") or 0)
-            creds = cast(object, json.loads(self.rfile.read(length)))
-            if creds != {"username": fake.username, "password": fake.password}:
-                self._send(412, {"message": "Wrong username or password."})
+            creds = LoginRequest.model_validate_json(self.rfile.read(length))
+            if creds != LoginRequest(username=fake.username, password=fake.password):
+                self._send(412, ApiMessage(message="Wrong username or password."))
                 return
-            self._send(200, {fake.token_field: fake.token})
+            token = fake.token
+            response = LoginResponse(token=token, access_token=token, jwt=token)
+            self._send(200, response, include={fake.token_field})
 
         def do_GET(self) -> None:
             self._record()
             if self.headers.get("Authorization") != f"Bearer {fake.token}":
-                self._send(
-                    401,
-                    {
-                        "message": "missing, malformed, expired or otherwise invalid token"
-                    },
-                )
+                message = "missing, malformed, expired or otherwise invalid token"
+                self._send(401, ApiMessage(message=message))
                 return
             url = urlsplit(self.path)
             if url.path == f"{API_PREFIX}/projects":
-                self._send(200, fake.projects)
+                self._send(200, Projects(fake.projects))
                 return
             if url.path == f"{API_PREFIX}/tasks/all":
                 page = int(parse_qs(url.query).get("page", ["1"])[0])
-                self._send(200, fake.tasks_page(page))
+                self._send(200, Tasks(fake.tasks_page(page)))
                 return
             match = re.fullmatch(rf"{API_PREFIX}/projects/(\d+)/tasks", url.path)
             if match:
                 items = fake.project_tasks(int(match.group(1)))
-                self._send(200, {"tasks": items} if fake.wrap_project_tasks else items)
+                self._send(200, TaskList(tasks=items) if fake.wrap_project_tasks else Tasks(items))
                 return
-            self._send(404, {"message": "not found"})
+            self._send(404, ApiMessage(message="not found"))
 
     return Handler
 
 
 @contextmanager
 def serve_vikunja(fake: FakeVikunja) -> Iterator[str]:
-    """Run the fake Vikunja on a random local port; yields the API base URL."""
+    """Run the fake Vikunja on a random local port; yields (and sets `fake.base_url` to) the API base URL."""
     server = ThreadingHTTPServer(("127.0.0.1", 0), _make_handler(fake))
     thread = threading.Thread(target=lambda: server.serve_forever(poll_interval=0.01), daemon=True)
     thread.start()
+    fake.base_url = f"http://127.0.0.1:{server.server_address[1]}{API_PREFIX}"
     try:
-        yield f"http://127.0.0.1:{server.server_address[1]}{API_PREFIX}"
+        yield fake.base_url
     finally:
         server.shutdown()
         server.server_close()
@@ -139,113 +158,8 @@ class NotFound(Exception):
     pass
 
 
-class Call[T]:
-    def __init__(self, fn: Callable[[], T]) -> None:
-        self._fn = fn
-
-    def execute(self) -> T:
-        return self._fn()
-
-
-class FakeCalendars:
-    def __init__(self, owner: "FakeCalendarService") -> None:
-        self._owner = owner
-
-    def get(self, *, calendarId: str) -> Call[CalendarBody]:
-        def run() -> CalendarBody:
-            if calendarId not in self._owner.calendar_bodies:
-                raise NotFound(calendarId)
-            return self._owner.calendar_bodies[calendarId]
-
-        return Call(run)
-
-    def insert(self, *, body: CalendarBody) -> Call[CalendarListEntry]:
-        def run() -> CalendarListEntry:
-            cal_id = f"cal-{len(self._owner.calendar_bodies) + 1}"
-            self._owner.add_calendar(cal_id, body["summary"], body["timeZone"])
-            return {"id": cal_id, "summary": body["summary"]}
-
-        return Call(run)
-
-
-class FakeCalendarList:
-    def __init__(self, owner: "FakeCalendarService") -> None:
-        self._owner = owner
-
-    def list(self, *, pageToken: str | None = None) -> Call[CalendarListPage]:
-        def run() -> CalendarListPage:
-            entries = list(self._owner.list_entries.values())
-            start = int(pageToken) if pageToken else 0
-            end = start + self._owner.list_page_size
-            page: CalendarListPage = {"items": entries[start:end]}
-            if end < len(entries):
-                page["nextPageToken"] = str(end)
-            return page
-
-        return Call(run)
-
-    def get(self, *, calendarId: str) -> Call[CalendarListEntry]:
-        def run() -> CalendarListEntry:
-            if calendarId not in self._owner.list_entries:
-                raise NotFound(calendarId)
-            return self._owner.list_entries[calendarId].copy()
-
-        return Call(run)
-
-    def update(
-        self, *, calendarId: str, body: CalendarListEntry
-    ) -> Call[CalendarListEntry]:
-        def run() -> CalendarListEntry:
-            if calendarId not in self._owner.list_entries:
-                raise NotFound(calendarId)
-            self._owner.list_entries[calendarId] = body
-            return body
-
-        return Call(run)
-
-
-class FakeEvents:
-    def __init__(self, owner: "FakeCalendarService") -> None:
-        self._owner = owner
-
-    def _check(self, calendarId: str, body: EventBody, sendUpdates: str) -> None:
-        if calendarId not in self._owner.calendar_bodies:
-            raise NotFound(calendarId)
-        if sendUpdates != "none":
-            raise AssertionError(f"unexpected sendUpdates={sendUpdates!r}")
-        if body["summary"] in self._owner.fail_summaries:
-            raise RuntimeError(f"simulated API failure for {body['summary']!r}")
-
-    def insert(
-        self, *, calendarId: str, body: EventBody, sendUpdates: str
-    ) -> Call[CreatedEvent]:
-        def run() -> CreatedEvent:
-            self._check(calendarId, body, sendUpdates)
-            self._owner.event_counter += 1
-            event_id = f"evt-{self._owner.event_counter}"
-            self._owner.event_store.setdefault(calendarId, {})[event_id] = body
-            self._owner.inserts.append(event_id)
-            return {"id": event_id}
-
-        return Call(run)
-
-    def patch(
-        self, *, calendarId: str, eventId: str, body: EventBody, sendUpdates: str
-    ) -> Call[CreatedEvent]:
-        def run() -> CreatedEvent:
-            self._check(calendarId, body, sendUpdates)
-            events = self._owner.event_store.setdefault(calendarId, {})
-            if eventId not in events:
-                raise NotFound(eventId)
-            events[eventId] = body
-            self._owner.patches.append(eventId)
-            return {"id": eventId}
-
-        return Call(run)
-
-
 class FakeCalendarService:
-    """In-memory stand-in for the Google Calendar v3 client (satisfies `CalendarService`)."""
+    """In-memory stand-in for the Google Calendar API (satisfies `CalendarService`)."""
 
     def __init__(self, list_page_size: int = 100) -> None:
         self.list_page_size = list_page_size
@@ -258,14 +172,61 @@ class FakeCalendarService:
         self.fail_summaries: set[str] = set()
 
     def add_calendar(self, cal_id: str, summary: str, time_zone: str = "UTC") -> None:
-        self.calendar_bodies[cal_id] = {"summary": summary, "timeZone": time_zone}
-        self.list_entries[cal_id] = {"id": cal_id, "summary": summary}
+        self.calendar_bodies[cal_id] = CalendarBody(summary=summary, time_zone=time_zone)
+        self.list_entries[cal_id] = CalendarListEntry(id=cal_id, summary=summary)
 
-    def calendars(self) -> FakeCalendars:
-        return FakeCalendars(self)
+    # Calendars
+    def get_calendar(self, calendar_id: str) -> CalendarBody:
+        if calendar_id not in self.calendar_bodies:
+            raise NotFound(calendar_id)
+        return self.calendar_bodies[calendar_id]
 
-    def calendarList(self) -> FakeCalendarList:
-        return FakeCalendarList(self)
+    def insert_calendar(self, body: CalendarBody) -> CalendarListEntry:
+        cal_id = f"cal-{len(self.calendar_bodies) + 1}"
+        self.add_calendar(cal_id, body.summary, body.time_zone)
+        return CalendarListEntry(id=cal_id, summary=body.summary)
 
-    def events(self) -> FakeEvents:
-        return FakeEvents(self)
+    # Calendar list
+    def list_calendars(self, page_token: str | None) -> CalendarListPage:
+        entries = list(self.list_entries.values())
+        start = int(page_token) if page_token else 0
+        end = start + self.list_page_size
+        return CalendarListPage(
+            items=entries[start:end],
+            next_page_token=str(end) if end < len(entries) else None,
+        )
+
+    def get_calendar_list_entry(self, calendar_id: str) -> CalendarListEntry:
+        if calendar_id not in self.list_entries:
+            raise NotFound(calendar_id)
+        return self.list_entries[calendar_id].model_copy(deep=True)
+
+    def update_calendar_list_entry(self, entry: CalendarListEntry) -> CalendarListEntry:
+        if entry.id not in self.list_entries:
+            raise NotFound(entry.id)
+        self.list_entries[entry.id] = entry
+        return entry
+
+    # Events
+    def _check(self, calendar_id: str, body: EventBody) -> None:
+        if calendar_id not in self.calendar_bodies:
+            raise NotFound(calendar_id)
+        if body.summary in self.fail_summaries:
+            raise RuntimeError(f"simulated API failure for {body.summary!r}")
+
+    def insert_event(self, calendar_id: str, body: EventBody) -> CreatedEvent:
+        self._check(calendar_id, body)
+        self.event_counter += 1
+        event_id = f"evt-{self.event_counter}"
+        self.event_store.setdefault(calendar_id, {})[event_id] = body
+        self.inserts.append(event_id)
+        return CreatedEvent(id=event_id)
+
+    def patch_event(self, calendar_id: str, event_id: str, body: EventBody) -> CreatedEvent:
+        self._check(calendar_id, body)
+        events = self.event_store.setdefault(calendar_id, {})
+        if event_id not in events:
+            raise NotFound(event_id)
+        events[event_id] = body
+        self.patches.append(event_id)
+        return CreatedEvent(id=event_id)

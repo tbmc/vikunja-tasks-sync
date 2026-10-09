@@ -36,7 +36,7 @@ Each task becomes a calendar event linked to its project, with reminders for upc
 4. **Run the sync**
 
    ```bash
-   uv run vikunja_sync.py
+   uv run python -m vikunja_sync
    ```
 
    The first run opens a browser window to authorize Google access and creates `token.json`.
@@ -52,7 +52,7 @@ docker build -t vikunja-tasks-sync .
 ```
 
 The container works in `/data`: relative paths from `.env` (`credentials.json`, `token.json`, `.state/`, `.out/`) resolve there, so mount a folder on it.
-The Google OAuth flow needs a browser, so generate `token.json` once on your machine (`uv run vikunja_sync.py`) and copy it to that folder along with `credentials.json`.
+The Google OAuth flow needs a browser, so generate `token.json` once on your machine (`uv run python -m vikunja_sync`) and copy it to that folder along with `credentials.json`.
 
 ```bash
 mkdir -p data && cp credentials.json token.json data/
@@ -63,9 +63,24 @@ The container runs as uid `1000`; make sure it can write to the mounted folder (
 
 ---
 
+### Code layout
+
+The `vikunja_sync` package (all data structures are [pydantic](https://docs.pydantic.dev/) models):
+
+* `config.py`: `Settings` model, validated from the environment
+* `vikunja.py`: Vikunja API client (login, projects, tasks)
+* `google_calendar.py`: Google Calendar payload models, typed client over `googleapiclient`, OAuth and calendar/event helpers
+* `events.py`: task → event conversion (dates, summary, reminders)
+* `state.py`: local task → event mapping (`STATE_FILE`)
+* `ics_export.py`: `.ics` backup
+* `sync.py`: sync rules and orchestration (`run()`)
+* `__main__.py`: entry point (loads `.env`, then runs the sync)
+
+---
+
 ### Type checking
 
-The code is checked with [mypy](https://mypy.readthedocs.io/) in its strictest configuration (see `[tool.mypy]` in `pyproject.toml`).
+The code is checked with [mypy](https://mypy.readthedocs.io/) in its strictest configuration (see `[tool.mypy]` in `pyproject.toml`), with the pydantic mypy plugin.
 Minimal stubs for untyped dependencies (`ics`, `google_auth_oauthlib`) live in `typings/`.
 
 ```bash
@@ -80,9 +95,9 @@ uv run mypy
 uv run pytest
 ```
 
-* `tests/test_unit.py`: pure helpers (parsing, dates, event bodies, state, ICS export) and calendar helpers
+* `tests/test_unit.py`: pure helpers (config, parsing, dates, sync rules, event bodies, state, ICS export) and calendar helpers
 * `tests/test_integration.py`: the Vikunja client against a fake Vikunja server over real HTTP (login, pagination, project filter, errors)
-* `tests/test_e2e.py`: full `main()` runs against the fake Vikunja server and an in-memory Google Calendar (creation, updates, skipped overdue tasks, failures, reminders, config parsing)
+* `tests/test_e2e.py`: full sync runs (`run()`) against the fake Vikunja server and an in-memory Google Calendar (creation, updates, skipped overdue tasks, failures, reminders, output folders)
 
 No network access or Google credentials are needed: the doubles live in `tests/fakes.py`.
 
@@ -93,7 +108,7 @@ No network access or Google credentials are needed: the doubles live in `tests/f
 Add a cron job to run every 15 minutes:
 
 ```bash
-*/15 * * * * cd /path/to/vikunja-tasks-sync && /path/to/uv run vikunja_sync.py
+*/15 * * * * cd /path/to/vikunja-tasks-sync && /path/to/uv run python -m vikunja_sync
 ```
 
 ---

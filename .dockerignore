@@ -1,5 +1,6 @@
-# Only pyproject.toml, uv.lock and vikunja_sync.py are needed in the build context
+# Only pyproject.toml, uv.lock and the vikunja_sync package are needed in the build context
 *
 !pyproject.toml
 !uv.lock
-!vikunja_sync.py
+!vikunja_sync/
+**/__pycache__

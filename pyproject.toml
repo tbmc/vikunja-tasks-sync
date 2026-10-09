@@ -8,6 +8,7 @@ dependencies = [
     "google-auth-httplib2>=0.4.4",
     "google-auth-oauthlib>=1.5.0",
     "ics>=0.7.3",
+    "pydantic>=2.14.0",
     "python-dateutil>=2.9.0.post0",
     "python-dotenv>=1.2.4",
     "pytz>=2026.5",
@@ -55,6 +56,12 @@ enable_error_code = [
     "unused-ignore",
 ]
 mypy_path = "typings"
+plugins = ["pydantic.mypy"]
+
+[tool.pydantic-mypy]
+init_typed = true
+init_forbid_extra = true
+warn_required_dynamic_aliases = true
 
 [tool.ruff]
 target-version = "py314"
