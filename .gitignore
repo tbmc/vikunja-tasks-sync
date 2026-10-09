@@ -5,6 +5,9 @@
 credentials.json
 token.json
 
+# Docker volume (contains secrets and state)
+data/
+
 # Outputs
 .out/
 .state/
