@@ -43,6 +43,26 @@ Each task becomes a calendar event linked to its project, with reminders for upc
 
 ---
 
+### Docker
+
+The image is built in two stages: `uv` installs the locked runtime dependencies into a virtualenv, which is then copied into a slim Python image (no `uv`, no dev dependencies).
+
+```bash
+docker build -t vikunja-tasks-sync .
+```
+
+The container works in `/data`: relative paths from `.env` (`credentials.json`, `token.json`, `.state/`, `.out/`) resolve there, so mount a folder on it.
+The Google OAuth flow needs a browser, so generate `token.json` once on your machine (`uv run vikunja_sync.py`) and copy it to that folder along with `credentials.json`.
+
+```bash
+mkdir -p data && cp credentials.json token.json data/
+docker run --rm --env-file .env -v "$PWD/data:/data" vikunja-tasks-sync
+```
+
+The container runs as uid `1000`; make sure it can write to the mounted folder (the token is refreshed in place).
+
+---
+
 ### Type checking
 
 The code is checked with [mypy](https://mypy.readthedocs.io/) in its strictest configuration (see `[tool.mypy]` in `pyproject.toml`).
@@ -51,6 +71,20 @@ Minimal stubs for untyped dependencies (`ics`, `google_auth_oauthlib`) live in `
 ```bash
 uv run mypy
 ```
+
+---
+
+### Tests
+
+```bash
+uv run pytest
+```
+
+* `tests/test_unit.py`: pure helpers (parsing, dates, event bodies, state, ICS export) and calendar helpers
+* `tests/test_integration.py`: the Vikunja client against a fake Vikunja server over real HTTP (login, pagination, project filter, errors)
+* `tests/test_e2e.py`: full `main()` runs against the fake Vikunja server and an in-memory Google Calendar (creation, updates, skipped overdue tasks, failures, reminders, config parsing)
+
+No network access or Google credentials are needed: the doubles live in `tests/fakes.py`.
 
 ---
 

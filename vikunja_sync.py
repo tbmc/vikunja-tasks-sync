@@ -19,21 +19,21 @@ from googleapiclient.discovery import build
 # ------------------
 load_dotenv()
 
-VIKUNJA_API_BASE   = os.getenv("VIKUNJA_API_BASE", "").rstrip("/")
-VIKUNJA_USERNAME   = os.getenv("VIKUNJA_USERNAME", "")
-VIKUNJA_PASSWORD   = os.getenv("VIKUNJA_PASSWORD", "")
+VIKUNJA_API_BASE = os.getenv("VIKUNJA_API_BASE", "").rstrip("/")
+VIKUNJA_USERNAME = os.getenv("VIKUNJA_USERNAME", "")
+VIKUNJA_PASSWORD = os.getenv("VIKUNJA_PASSWORD", "")
 VIKUNJA_VERIFY_SSL = os.getenv("VIKUNJA_VERIFY_SSL", "true").lower() == "true"
 
 PROJECT_IDS_RAW = os.getenv("PROJECT_IDS", "").strip()
 
-GOOGLE_CALENDAR_NAME   = os.getenv("GOOGLE_CALENDAR_NAME", "Vikunja Tasks")
-GOOGLE_CREDENTIALS_FILE= os.getenv("GOOGLE_CREDENTIALS_FILE", "credentials.json")
-GOOGLE_TOKEN_FILE      = os.getenv("GOOGLE_TOKEN_FILE", "token.json")
-STATE_FILE             = os.getenv("STATE_FILE", ".state/state.json")
-ICS_OUTPUT             = os.getenv("ICS_OUTPUT", ".out/vikunja_calendar.ics")
-TIMEZONE               = os.getenv("TIMEZONE", "UTC")
+GOOGLE_CALENDAR_NAME = os.getenv("GOOGLE_CALENDAR_NAME", "Vikunja Tasks")
+GOOGLE_CREDENTIALS_FILE = os.getenv("GOOGLE_CREDENTIALS_FILE", "credentials.json")
+GOOGLE_TOKEN_FILE = os.getenv("GOOGLE_TOKEN_FILE", "token.json")
+STATE_FILE = os.getenv("STATE_FILE", ".state/state.json")
+ICS_OUTPUT = os.getenv("ICS_OUTPUT", ".out/vikunja_calendar.ics")
+TIMEZONE = os.getenv("TIMEZONE", "UTC")
 
-REMINDER_MINUTES_RAW   = os.getenv("REMINDER_MINUTES", "").strip()
+REMINDER_MINUTES_RAW = os.getenv("REMINDER_MINUTES", "").strip()
 
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
@@ -45,7 +45,11 @@ if PROJECT_IDS_RAW:
 # Parse reminders
 REMINDER_MINUTES: list[int] = []
 if REMINDER_MINUTES_RAW:
-    REMINDER_MINUTES = [int(x) for x in REMINDER_MINUTES_RAW.split(",") if x.strip().lstrip("-").isdigit()]
+    REMINDER_MINUTES = [
+        int(x)
+        for x in REMINDER_MINUTES_RAW.split(",")
+        if x.strip().lstrip("-").isdigit()
+    ]
 
 # Ensure output folders exist
 for path in [STATE_FILE, ICS_OUTPUT]:
@@ -149,11 +153,15 @@ class CalendarsResource(Protocol):
 class CalendarListResource(Protocol):
     def list(self, *, pageToken: str | None = None) -> Executable[CalendarListPage]: ...
     def get(self, *, calendarId: str) -> Executable[CalendarListEntry]: ...
-    def update(self, *, calendarId: str, body: CalendarListEntry) -> Executable[CalendarListEntry]: ...
+    def update(
+        self, *, calendarId: str, body: CalendarListEntry
+    ) -> Executable[CalendarListEntry]: ...
 
 
 class EventsResource(Protocol):
-    def insert(self, *, calendarId: str, body: EventBody, sendUpdates: str) -> Executable[CreatedEvent]: ...
+    def insert(
+        self, *, calendarId: str, body: EventBody, sendUpdates: str
+    ) -> Executable[CreatedEvent]: ...
     def patch(
         self, *, calendarId: str, eventId: str, body: EventBody, sendUpdates: str
     ) -> Executable[CreatedEvent]: ...
@@ -209,6 +217,7 @@ def parse_task(raw: object) -> VikunjaTask:
 def response_json(resp: requests.Response) -> object:
     return cast(object, resp.json())
 
+
 # ------------------
 # State helpers
 # ------------------
@@ -218,9 +227,11 @@ def load_state() -> State:
             return cast(State, json.load(f))
     return {"events": {}, "calendar_id": None}
 
+
 def save_state(state: State) -> None:
     with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(state, f, ensure_ascii=False, indent=2)
+
 
 # ------------------
 # Google Calendar helpers
@@ -234,14 +245,21 @@ def google_service() -> CalendarService:
             Credentials.from_authorized_user_file(GOOGLE_TOKEN_FILE, SCOPES),  # type: ignore[no-untyped-call, misc]
         )
     if not creds or not cast(bool, creds.valid):
-        if creds and cast(bool, creds.expired) and cast(str | None, creds.refresh_token):
+        if (
+            creds
+            and cast(bool, creds.expired)
+            and cast(str | None, creds.refresh_token)
+        ):
             creds.refresh(Request())  # type: ignore[no-untyped-call]
         else:
-            flow = InstalledAppFlow.from_client_secrets_file(GOOGLE_CREDENTIALS_FILE, SCOPES)
+            flow = InstalledAppFlow.from_client_secrets_file(
+                GOOGLE_CREDENTIALS_FILE, SCOPES
+            )
             creds = flow.run_local_server(port=0)
         with open(GOOGLE_TOKEN_FILE, "w") as token:
             token.write(cast(str, creds.to_json()))  # type: ignore[no-untyped-call]
     return cast(CalendarService, build("calendar", "v3", credentials=creds))
+
 
 def ensure_calendar(service: CalendarService, state: State) -> str:
     # Use cached calendar_id if still valid
@@ -269,11 +287,17 @@ def ensure_calendar(service: CalendarService, state: State) -> str:
     state["calendar_id"] = created["id"]
     return created["id"]
 
-def set_calendar_default_reminders(service: CalendarService, calendar_id: str, minutes_list: list[int]) -> None:
-    overrides: list[EventReminder] = [{"method": "popup", "minutes": m} for m in minutes_list]
+
+def set_calendar_default_reminders(
+    service: CalendarService, calendar_id: str, minutes_list: list[int]
+) -> None:
+    overrides: list[EventReminder] = [
+        {"method": "popup", "minutes": m} for m in minutes_list
+    ]
     entry = service.calendarList().get(calendarId=calendar_id).execute()
     entry["defaultReminders"] = overrides
     service.calendarList().update(calendarId=calendar_id, body=entry).execute()
+
 
 # ------------------
 # Vikunja API
@@ -284,10 +308,15 @@ def vikunja_login() -> str:
     Returns a JWT token string.
     """
     if not VIKUNJA_API_BASE or not VIKUNJA_USERNAME or not VIKUNJA_PASSWORD:
-        raise SystemExit("VIKUNJA_API_BASE, VIKUNJA_USERNAME and VIKUNJA_PASSWORD must be set in .env")
+        raise SystemExit(
+            "VIKUNJA_API_BASE, VIKUNJA_USERNAME and VIKUNJA_PASSWORD must be set in .env"
+        )
 
     login_url = f"{VIKUNJA_API_BASE}/login"
-    payload: dict[str, str] = {"username": VIKUNJA_USERNAME, "password": VIKUNJA_PASSWORD}
+    payload: dict[str, str] = {
+        "username": VIKUNJA_USERNAME,
+        "password": VIKUNJA_PASSWORD,
+    }
     try:
         r = requests.post(
             login_url,
@@ -297,29 +326,43 @@ def vikunja_login() -> str:
         )
         r.raise_for_status()
         data = as_object(response_json(r))
-        token = get_str(data, "token") or get_str(data, "access_token") or get_str(data, "jwt")
+        token = (
+            get_str(data, "token")
+            or get_str(data, "access_token")
+            or get_str(data, "jwt")
+        )
         if not token:
             raise RuntimeError(f"Login response missing token field: {data}")
         return token
     except Exception as e:
         raise SystemExit(f"Failed to login to Vikunja: {e}")
 
+
 def vikunja_headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
+
 def fetch_projects_map(token: str) -> dict[int, str]:
     url = f"{VIKUNJA_API_BASE}/projects"
-    resp = requests.get(url, headers=vikunja_headers(token), timeout=30, verify=VIKUNJA_VERIFY_SSL)
+    resp = requests.get(
+        url, headers=vikunja_headers(token), timeout=30, verify=VIKUNJA_VERIFY_SSL
+    )
     resp.raise_for_status()
     projects = [as_object(p) for p in as_list(response_json(resp))]
     return {get_int(p, "id"): get_str(p, "title") for p in projects}
+
 
 def fetch_tasks(token: str) -> list[VikunjaTask]:
     tasks: list[VikunjaTask] = []
     if PROJECT_IDS:
         for pid in PROJECT_IDS:
             url = f"{VIKUNJA_API_BASE}/projects/{pid}/tasks"
-            r = requests.get(url, headers=vikunja_headers(token), timeout=30, verify=VIKUNJA_VERIFY_SSL)
+            r = requests.get(
+                url,
+                headers=vikunja_headers(token),
+                timeout=30,
+                verify=VIKUNJA_VERIFY_SSL,
+            )
             r.raise_for_status()
             items = response_json(r)
             if isinstance(items, dict) and "tasks" in items:
@@ -330,15 +373,25 @@ def fetch_tasks(token: str) -> list[VikunjaTask]:
         page = 1
         while True:
             url = f"{VIKUNJA_API_BASE}/tasks/all?page={page}"
-            r = requests.get(url, headers=vikunja_headers(token), timeout=30, verify=VIKUNJA_VERIFY_SSL)
+            r = requests.get(
+                url,
+                headers=vikunja_headers(token),
+                timeout=30,
+                verify=VIKUNJA_VERIFY_SSL,
+            )
             r.raise_for_status()
             data = response_json(r)
-            items = as_list(data) if isinstance(data, list) else as_list(as_object(data).get("tasks", []))
+            items = (
+                as_list(data)
+                if isinstance(data, list)
+                else as_list(as_object(data).get("tasks", []))
+            )
             if not items:
                 break
             tasks.extend(parse_task(item) for item in items)
             page += 1
     return tasks
+
 
 # ------------------
 # Transform & Sync
@@ -349,14 +402,17 @@ def iso_to_utc_dt(iso_str: str) -> datetime | None:
     dt = dateparse.isoparse(iso_str)
     return dt.astimezone(timezone.utc)
 
+
 def task_key(task: VikunjaTask) -> str:
     return f"{task['project_id']}:{task['id']}"
+
 
 def is_overdue(task: VikunjaTask) -> bool:
     due = iso_to_utc_dt(task["due_date"])
     if not due:
         return False
     return (not task["done"]) and (due < datetime.now(timezone.utc))
+
 
 def build_event_body(task: VikunjaTask, project_name: str) -> EventBody | None:
     title = task["title"]
@@ -395,13 +451,15 @@ def build_event_body(task: VikunjaTask, project_name: str) -> EventBody | None:
         },
         "source": {
             "title": "Vikunja",
-            "url": f"{VIKUNJA_API_BASE.replace('/api/v1', '')}/tasks/{task['id']}"
+            "url": f"{VIKUNJA_API_BASE.replace('/api/v1', '')}/tasks/{task['id']}",
         },
         # Per-event reminders
         "reminders": (
             {
                 "useDefault": False,
-                "overrides": [{"method": "popup", "minutes": m} for m in REMINDER_MINUTES]
+                "overrides": [
+                    {"method": "popup", "minutes": m} for m in REMINDER_MINUTES
+                ],
             }
             if REMINDER_MINUTES
             else {"useDefault": True}
@@ -411,6 +469,7 @@ def build_event_body(task: VikunjaTask, project_name: str) -> EventBody | None:
     if done:
         body["colorId"] = "10"  # green
     return body
+
 
 def tasks_to_ics(tasks: list[VikunjaTask], projects_map: dict[int, str]) -> None:
     cal = Calendar()
@@ -429,13 +488,16 @@ def tasks_to_ics(tasks: list[VikunjaTask], projects_map: dict[int, str]) -> None
     with open(ICS_OUTPUT, "w", encoding="utf-8") as f:
         f.writelines(cal)
 
+
 # ------------------
 # Main
 # ------------------
 def main() -> None:
     # Sanity
     if not VIKUNJA_API_BASE or not VIKUNJA_USERNAME or not VIKUNJA_PASSWORD:
-        raise SystemExit("VIKUNJA_API_BASE, VIKUNJA_USERNAME and VIKUNJA_PASSWORD must be set in .env")
+        raise SystemExit(
+            "VIKUNJA_API_BASE, VIKUNJA_USERNAME and VIKUNJA_PASSWORD must be set in .env"
+        )
 
     # Login to Vikunja (fresh JWT)
     token = vikunja_login()
@@ -473,7 +535,11 @@ def main() -> None:
             candidates.append(t)
         else:
             if overdue_now:
-                if prev and (prev["done"] is False) and (prev["last_updated"] == updated_str):
+                if (
+                    prev
+                    and (prev["done"] is False)
+                    and (prev["last_updated"] == updated_str)
+                ):
                     continue
                 candidates.append(t)
             else:
@@ -482,30 +548,36 @@ def main() -> None:
     # Upsert to Google Calendar
     for t in candidates:
         key = task_key(t)
-        body = build_event_body(t, projects_map.get(t["project_id"], f"Project {t['project_id']}"))
+        body = build_event_body(
+            t, projects_map.get(t["project_id"], f"Project {t['project_id']}")
+        )
         if not body:
             continue
 
         known = state["events"].get(key)
         try:
             if known and known.get("event_id"):
-                ev = service.events().patch(
-                    calendarId=cal_id,
-                    eventId=known["event_id"],
-                    body=body,
-                    sendUpdates="none"
-                ).execute()
+                ev = (
+                    service.events()
+                    .patch(
+                        calendarId=cal_id,
+                        eventId=known["event_id"],
+                        body=body,
+                        sendUpdates="none",
+                    )
+                    .execute()
+                )
                 state["events"][key] = {
                     "event_id": ev["id"],
                     "done": t["done"],
                     "last_updated": t["updated"],
                 }
             else:
-                ev = service.events().insert(
-                    calendarId=cal_id,
-                    body=body,
-                    sendUpdates="none"
-                ).execute()
+                ev = (
+                    service.events()
+                    .insert(calendarId=cal_id, body=body, sendUpdates="none")
+                    .execute()
+                )
                 state["events"][key] = {
                     "event_id": ev["id"],
                     "done": t["done"],
@@ -518,7 +590,10 @@ def main() -> None:
     tasks_to_ics(tasks, projects_map)
 
     save_state(state)
-    print(f"✅ Sync complete. Calendar: {GOOGLE_CALENDAR_NAME} | State: {STATE_FILE} | ICS: {ICS_OUTPUT}")
+    print(
+        f"✅ Sync complete. Calendar: {GOOGLE_CALENDAR_NAME} | State: {STATE_FILE} | ICS: {ICS_OUTPUT}"
+    )
+
 
 if __name__ == "__main__":
     main()
