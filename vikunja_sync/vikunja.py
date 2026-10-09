@@ -143,9 +143,9 @@ def fetch_tasks(settings: Settings, token: str) -> list[VikunjaTask]:
         for pid in settings.project_ids:
             tasks.extend(_parse_tasks(_get(settings, token, f"/projects/{pid}/tasks")))
     else:
-        # Pull all tasks, page by page until an empty page
+        # Pull all tasks, page by page until an empty page (`/tasks/all` on old Vikunja versions)
         page = 1
-        while items := _parse_tasks(_get(settings, token, f"/tasks/all?page={page}")):
+        while items := _parse_tasks(_get(settings, token, f"/tasks?page={page}")):
             tasks.extend(items)
             page += 1
     return tasks

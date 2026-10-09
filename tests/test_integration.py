@@ -103,7 +103,7 @@ def test_fetch_tasks_all_tasks_are_paginated_until_empty_page(
     tasks = fetch_tasks(live_settings, "jwt-token-123")
     assert [t.id for t in tasks] == [1, 2, 3, 4, 5]
     assert [r.path for r in vikunja.requests] == [
-        f"/api/v1/tasks/all?page={p}" for p in (1, 2, 3, 4)
+        f"/api/v1/tasks?page={p}" for p in (1, 2, 3, 4)
     ]
 
 

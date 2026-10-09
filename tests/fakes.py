@@ -124,7 +124,7 @@ def _make_handler(fake: FakeVikunja) -> type[BaseHTTPRequestHandler]:
             if url.path == f"{API_PREFIX}/projects":
                 self._send(200, Projects(fake.projects))
                 return
-            if url.path == f"{API_PREFIX}/tasks/all":
+            if url.path == f"{API_PREFIX}/tasks":
                 page = int(parse_qs(url.query).get("page", ["1"])[0])
                 self._send(200, Tasks(fake.tasks_page(page)))
                 return
