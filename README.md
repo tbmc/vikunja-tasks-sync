@@ -28,17 +28,15 @@ Each task becomes a calendar event linked to its project, with reminders for upc
    ```
 
    Fill in your Vikunja URL, username, and password.
-3. **Install dependencies**
+3. **Install dependencies** (requires [uv](https://docs.astral.sh/uv/) and Python 3.14+)
 
    ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
-   pip install -r requirements.txt
+   uv sync
    ```
 4. **Run the sync**
 
    ```bash
-   python vikunja_sync.py
+   uv run vikunja_sync.py
    ```
 
    The first run opens a browser window to authorize Google access and creates `token.json`.
@@ -50,7 +48,7 @@ Each task becomes a calendar event linked to its project, with reminders for upc
 Add a cron job to run every 15 minutes:
 
 ```bash
-*/15 * * * * cd /path/to/vikunja-gcal-sync && /path/to/.venv/bin/python vikunja_sync.py
+*/15 * * * * cd /path/to/vikunja-tasks-sync && /path/to/uv run vikunja_sync.py
 ```
 
 ---

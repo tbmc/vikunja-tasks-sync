@@ -1,0 +1,15 @@
+[project]
+name = "vikunja-tasks-sync"
+version = "0.1.0"
+description = "Sync Vikunja tasks with Google Calendar"
+requires-python = ">=3.14"
+dependencies = [
+    "google-api-python-client>=2.201.0",
+    "google-auth-httplib2>=0.4.4",
+    "google-auth-oauthlib>=1.5.0",
+    "ics>=0.7.3",
+    "python-dateutil>=2.9.0.post0",
+    "python-dotenv>=1.2.4",
+    "pytz>=2026.5",
+    "requests>=2.34.2",
+]
