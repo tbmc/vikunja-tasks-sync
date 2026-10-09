@@ -61,6 +61,18 @@ docker run --rm --env-file .env -v "$PWD/data:/data" vikunja-tasks-sync
 
 The container runs as uid `1000`; make sure it can write to the mounted folder (the token is refreshed in place).
 
+With Docker Compose (`compose.yaml` builds the image, reads `.env` and mounts `./data` on `/data`):
+
+```bash
+docker compose run --rm --build vikunja-sync
+```
+
+The sync runs once and exits; schedule it with cron, e.g. every 15 minutes:
+
+```cron
+*/15 * * * * cd /path/to/vikunja-tasks-sync && docker compose run --rm vikunja-sync
+```
+
 ---
 
 ### Code layout

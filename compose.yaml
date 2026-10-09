@@ -1,0 +1,10 @@
+services:
+  vikunja-sync:
+    build: .
+    image: vikunja-tasks-sync
+    # One-shot sync: run it with `docker compose run --rm vikunja-sync` (e.g. from cron)
+    restart: "no"
+    env_file: .env
+    volumes:
+      # credentials.json, token.json, .state/ and .out/ live here (container uid 1000 must be able to write)
+      - ./data:/data

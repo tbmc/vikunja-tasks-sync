@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1
-
 # ---------- Stage 1: build the virtualenv with uv ----------
 FROM python:3.14-slim AS builder
 
