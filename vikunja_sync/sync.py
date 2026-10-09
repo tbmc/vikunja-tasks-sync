@@ -30,11 +30,7 @@ def should_sync(task: VikunjaTask, prev: EventState | None) -> bool:
     """
     if not iso_to_utc_dt(task.due_date):
         return False
-    unchanged = (
-        prev is not None
-        and not prev.done
-        and prev.last_updated == task.updated
-    )
+    unchanged = prev is not None and not prev.done and prev.last_updated == task.updated
     return not (is_overdue(task) and unchanged)
 
 
@@ -58,7 +54,8 @@ def sync_events(
             event_id = upsert_event(
                 service, calendar_id, known.event_id if known else None, body
             )
-        except Exception as e:
+        # One failing task must not abort the sync; it is retried next run
+        except Exception as e:  # noqa: BLE001
             print(f"[WARN] Upsert failed for {key}: {e}")
             continue
         state.events[key] = EventState(
@@ -85,7 +82,8 @@ def run(settings: Settings) -> None:
     if settings.reminder_minutes:
         try:
             set_calendar_default_reminders(service, cal_id, settings.reminder_minutes)
-        except Exception as e:
+        # Best-effort safety net: never block the sync
+        except Exception as e:  # noqa: BLE001
             print(f"[WARN] Could not set default reminders on calendar: {e}")
 
     projects = vikunja.fetch_projects(settings, token)

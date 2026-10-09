@@ -81,7 +81,9 @@ def _make_handler(fake: FakeVikunja) -> type[BaseHTTPRequestHandler]:
         ) -> None:  # silence test output
             pass
 
-        def _send(self, status: int, payload: BaseModel, *, include: set[str] | None = None) -> None:
+        def _send(
+            self, status: int, payload: BaseModel, *, include: set[str] | None = None
+        ) -> None:
             body = payload.model_dump_json(include=include).encode()
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
@@ -129,7 +131,10 @@ def _make_handler(fake: FakeVikunja) -> type[BaseHTTPRequestHandler]:
             match = re.fullmatch(rf"{API_PREFIX}/projects/(\d+)/tasks", url.path)
             if match:
                 items = fake.project_tasks(int(match.group(1)))
-                self._send(200, TaskList(tasks=items) if fake.wrap_project_tasks else Tasks(items))
+                self._send(
+                    200,
+                    TaskList(tasks=items) if fake.wrap_project_tasks else Tasks(items),
+                )
                 return
             self._send(404, ApiMessage(message="not found"))
 
@@ -140,7 +145,9 @@ def _make_handler(fake: FakeVikunja) -> type[BaseHTTPRequestHandler]:
 def serve_vikunja(fake: FakeVikunja) -> Iterator[str]:
     """Run the fake Vikunja on a random local port; yields (and sets `fake.base_url` to) the API base URL."""
     server = ThreadingHTTPServer(("127.0.0.1", 0), _make_handler(fake))
-    thread = threading.Thread(target=lambda: server.serve_forever(poll_interval=0.01), daemon=True)
+    thread = threading.Thread(
+        target=lambda: server.serve_forever(poll_interval=0.01), daemon=True
+    )
     thread.start()
     fake.base_url = f"http://127.0.0.1:{server.server_address[1]}{API_PREFIX}"
     try:
@@ -172,7 +179,9 @@ class FakeCalendarService:
         self.fail_summaries: set[str] = set()
 
     def add_calendar(self, cal_id: str, summary: str, time_zone: str = "UTC") -> None:
-        self.calendar_bodies[cal_id] = CalendarBody(summary=summary, time_zone=time_zone)
+        self.calendar_bodies[cal_id] = CalendarBody(
+            summary=summary, time_zone=time_zone
+        )
         self.list_entries[cal_id] = CalendarListEntry(id=cal_id, summary=summary)
 
     # Calendars
@@ -222,7 +231,9 @@ class FakeCalendarService:
         self.inserts.append(event_id)
         return CreatedEvent(id=event_id)
 
-    def patch_event(self, calendar_id: str, event_id: str, body: EventBody) -> CreatedEvent:
+    def patch_event(
+        self, calendar_id: str, event_id: str, body: EventBody
+    ) -> CreatedEvent:
         self._check(calendar_id, body)
         events = self.event_store.setdefault(calendar_id, {})
         if event_id not in events:

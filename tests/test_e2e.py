@@ -30,26 +30,59 @@ def calendar_events(google: FakeCalendarService) -> dict[str, EventBody]:
 @pytest.fixture()
 def tasks(vikunja: FakeVikunja) -> FakeVikunja:
     vikunja.tasks = [
-        VikunjaTask(id=1, project_id=1, title="Dentist", due_date=iso(3), updated="2026-01-01T10:00:00Z"),
-        VikunjaTask(id=2, project_id=2, title="Report", due_date=iso(-2), updated="2026-01-01T10:00:00Z"),
-        VikunjaTask(id=3, project_id=2, title="Ship v1", done=True, due_date=iso(-5), updated="2026-01-01T10:00:00Z"),
-        VikunjaTask(id=4, project_id=1, title="Someday", due_date="0001-01-01T00:00:00Z"),
-        VikunjaTask(id=5, project_id=7, title="Orphan", due_date=iso(10), start_date=iso(9)),
+        VikunjaTask(
+            id=1,
+            project_id=1,
+            title="Dentist",
+            due_date=iso(3),
+            updated="2026-01-01T10:00:00Z",
+        ),
+        VikunjaTask(
+            id=2,
+            project_id=2,
+            title="Report",
+            due_date=iso(-2),
+            updated="2026-01-01T10:00:00Z",
+        ),
+        VikunjaTask(
+            id=3,
+            project_id=2,
+            title="Ship v1",
+            done=True,
+            due_date=iso(-5),
+            updated="2026-01-01T10:00:00Z",
+        ),
+        VikunjaTask(
+            id=4, project_id=1, title="Someday", due_date="0001-01-01T00:00:00Z"
+        ),
+        VikunjaTask(
+            id=5, project_id=7, title="Orphan", due_date=iso(10), start_date=iso(9)
+        ),
     ]
     return vikunja
 
 
 def test_first_sync_creates_calendar_events_state_and_ics(
-    tasks: FakeVikunja, google: FakeCalendarService, live_settings: Settings, capsys: pytest.CaptureFixture[str]
+    tasks: FakeVikunja,
+    google: FakeCalendarService,
+    live_settings: Settings,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     run(live_settings)
 
     # Calendar created with the configured name and timezone
-    assert list(google.calendar_bodies.values()) == [CalendarBody(summary="Vikunja Tasks", time_zone="Europe/Paris")]
+    assert list(google.calendar_bodies.values()) == [
+        CalendarBody(summary="Vikunja Tasks", time_zone="Europe/Paris")
+    ]
 
     # One event per task with a due date
     summaries = sorted(e.summary for e in calendar_events(google).values())
-    assert summaries == ["[Home] Dentist", "[Project 7] Orphan", "[Work] Report", "✅ [Work] Ship v1"]
+    assert summaries == [
+        "[Home] Dentist",
+        "[Project 7] Orphan",
+        "[Work] Report",
+        "✅ [Work] Ship v1",
+    ]
     assert google.patches == []
 
     # State maps every synced task to its event
@@ -64,7 +97,11 @@ def test_first_sync_creates_calendar_events_state_and_ics(
     assert ics.count("BEGIN:VEVENT") == 4
 
     # Every Vikunja call after login was authenticated
-    assert all(r.authorization == "Bearer jwt-token-123" for r in tasks.requests if r.method == "GET")
+    assert all(
+        r.authorization == "Bearer jwt-token-123"
+        for r in tasks.requests
+        if r.method == "GET"
+    )
     assert "Sync complete" in capsys.readouterr().out
 
 
@@ -88,7 +125,9 @@ def test_second_sync_updates_in_place_and_skips_unchanged_overdue(
     assert read_state(live_settings) == first_state
 
 
-def test_task_changes_are_propagated(tasks: FakeVikunja, google: FakeCalendarService, live_settings: Settings) -> None:
+def test_task_changes_are_propagated(
+    tasks: FakeVikunja, google: FakeCalendarService, live_settings: Settings
+) -> None:
     run(live_settings)
     event_id = read_state(live_settings).events["2:2"].event_id
 
@@ -106,7 +145,9 @@ def test_task_changes_are_propagated(tasks: FakeVikunja, google: FakeCalendarSer
     )
 
 
-def test_edited_overdue_task_is_updated(tasks: FakeVikunja, google: FakeCalendarService, live_settings: Settings) -> None:
+def test_edited_overdue_task_is_updated(
+    tasks: FakeVikunja, google: FakeCalendarService, live_settings: Settings
+) -> None:
     run(live_settings)
     event_id = read_state(live_settings).events["2:2"].event_id
 
@@ -117,7 +158,9 @@ def test_edited_overdue_task_is_updated(tasks: FakeVikunja, google: FakeCalendar
     assert calendar_events(google)[event_id].summary == "[Work] Report (late)"
 
 
-def test_reuses_existing_calendar_by_name(tasks: FakeVikunja, google: FakeCalendarService, live_settings: Settings) -> None:
+def test_reuses_existing_calendar_by_name(
+    tasks: FakeVikunja, google: FakeCalendarService, live_settings: Settings
+) -> None:
     google.add_calendar("primary", "Personal")
     google.add_calendar("existing", "Vikunja Tasks")
     run(live_settings)
@@ -131,7 +174,10 @@ def test_reminders_are_set_on_calendar_and_events(
     live_settings.reminder_minutes = (1440, 0)
     run(live_settings)
 
-    expected = [EventReminder(method="popup", minutes=1440), EventReminder(method="popup", minutes=0)]
+    expected = [
+        EventReminder(method="popup", minutes=1440),
+        EventReminder(method="popup", minutes=0),
+    ]
     assert google.list_entries["cal-1"].default_reminders == expected
     for event in calendar_events(google).values():
         assert event.reminders == EventReminders(use_default=False, overrides=expected)
@@ -142,11 +188,16 @@ def test_only_selected_projects_are_synced(
 ) -> None:
     live_settings.project_ids = (1,)
     run(live_settings)
-    assert sorted(e.summary for e in calendar_events(google).values()) == ["[Home] Dentist"]
+    assert sorted(e.summary for e in calendar_events(google).values()) == [
+        "[Home] Dentist"
+    ]
 
 
 def test_failed_upsert_is_reported_and_retried_next_run(
-    tasks: FakeVikunja, google: FakeCalendarService, live_settings: Settings, capsys: pytest.CaptureFixture[str]
+    tasks: FakeVikunja,
+    google: FakeCalendarService,
+    live_settings: Settings,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     google.fail_summaries = {"[Home] Dentist"}
     run(live_settings)
@@ -179,7 +230,10 @@ def test_missing_config_aborts(live_settings: Settings) -> None:
 
 
 def test_output_folders_are_created(
-    tasks: FakeVikunja, google: FakeCalendarService, live_settings: Settings, tmp_path: Path
+    tasks: FakeVikunja,
+    google: FakeCalendarService,
+    live_settings: Settings,
+    tmp_path: Path,
 ) -> None:
     live_settings.state_file = str(tmp_path / "nested" / "state" / "state.json")
     live_settings.ics_output = str(tmp_path / "out" / "cal.ics")

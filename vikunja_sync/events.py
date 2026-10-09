@@ -1,6 +1,6 @@
 """Transform Vikunja tasks into calendar events."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from dateutil import parser as dateparse
 
@@ -24,7 +24,7 @@ def iso_to_utc_dt(iso_str: str) -> datetime | None:
     if not iso_str or iso_str == NULL_DATE:
         return None
     dt = dateparse.isoparse(iso_str)
-    return dt.astimezone(timezone.utc)
+    return dt.astimezone(UTC)
 
 
 def task_key(task: VikunjaTask) -> str:
@@ -35,7 +35,7 @@ def is_overdue(task: VikunjaTask) -> bool:
     due = iso_to_utc_dt(task.due_date)
     if not due:
         return False
-    return (not task.done) and (due < datetime.now(timezone.utc))
+    return (not task.done) and (due < datetime.now(UTC))
 
 
 def event_summary(task: VikunjaTask, project: str) -> str:

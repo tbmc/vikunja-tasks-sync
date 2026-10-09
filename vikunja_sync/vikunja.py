@@ -3,7 +3,14 @@
 from typing import Annotated
 
 import requests
-from pydantic import BaseModel, BeforeValidator, RootModel, StrictInt, TypeAdapter
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    RootModel,
+    StrictInt,
+    TypeAdapter,
+    ValidationError,
+)
 from pydantic_core import PydanticUseDefault
 
 from vikunja_sync.config import Settings
@@ -96,8 +103,8 @@ def login(settings: Settings) -> str:
         if not token:
             raise RuntimeError(f"Login response missing token field: {r.text}")
         return token
-    except Exception as e:
-        raise SystemExit(f"Failed to login to Vikunja: {e}")
+    except (requests.RequestException, ValidationError, RuntimeError) as e:
+        raise SystemExit(f"Failed to login to Vikunja: {e}") from e
 
 
 def _get(settings: Settings, token: str, path: str) -> bytes:

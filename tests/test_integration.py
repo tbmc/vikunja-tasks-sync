@@ -1,6 +1,5 @@
 """Integration tests: the Vikunja client talking to a fake Vikunja server over real HTTP."""
 
-
 import pytest
 import requests
 
@@ -19,7 +18,9 @@ from vikunja_sync.vikunja import (
 class TestLogin:
     def test_returns_token(self, vikunja: FakeVikunja, live_settings: Settings) -> None:
         assert login(live_settings) == "jwt-token-123"
-        assert [(r.method, r.path) for r in vikunja.requests] == [("POST", "/api/v1/login")]
+        assert [(r.method, r.path) for r in vikunja.requests] == [
+            ("POST", "/api/v1/login")
+        ]
 
     @pytest.mark.parametrize("field", ["access_token", "jwt"])
     def test_accepts_alternative_token_fields(
@@ -28,7 +29,9 @@ class TestLogin:
         vikunja.token_field = field
         assert login(live_settings) == "jwt-token-123"
 
-    def test_missing_token_field_exits(self, vikunja: FakeVikunja, live_settings: Settings) -> None:
+    def test_missing_token_field_exits(
+        self, vikunja: FakeVikunja, live_settings: Settings
+    ) -> None:
         vikunja.token_field = "something_else"
         with pytest.raises(SystemExit, match="Login response missing token field"):
             login(live_settings)
@@ -54,7 +57,9 @@ class TestLogin:
 
 def test_fetch_projects(vikunja: FakeVikunja, live_settings: Settings) -> None:
     projects = fetch_projects(live_settings, "jwt-token-123")
-    assert projects == Projects([Project(id=1, title="Home"), Project(id=2, title="Work")])
+    assert projects == Projects(
+        [Project(id=1, title="Home"), Project(id=2, title="Work")]
+    )
     assert vikunja.requests[-1].authorization == "Bearer jwt-token-123"
 
 
@@ -67,10 +72,14 @@ class TestFetchTasks:
     def test_all_tasks_are_paginated_until_empty_page(
         self, vikunja: FakeVikunja, live_settings: Settings
     ) -> None:
-        vikunja.tasks = [VikunjaTask(id=i, project_id=1 + i % 2, title=f"T{i}") for i in range(1, 6)]
+        vikunja.tasks = [
+            VikunjaTask(id=i, project_id=1 + i % 2, title=f"T{i}") for i in range(1, 6)
+        ]
         tasks = fetch_tasks(live_settings, "jwt-token-123")
         assert [t.id for t in tasks] == [1, 2, 3, 4, 5]
-        assert [r.path for r in vikunja.requests] == [f"/api/v1/tasks/all?page={p}" for p in (1, 2, 3, 4)]
+        assert [r.path for r in vikunja.requests] == [
+            f"/api/v1/tasks/all?page={p}" for p in (1, 2, 3, 4)
+        ]
 
     def test_no_tasks(self, live_settings: Settings) -> None:
         assert fetch_tasks(live_settings, "jwt-token-123") == []
@@ -89,7 +98,10 @@ class TestFetchTasks:
         live_settings.project_ids = (3, 1)
         tasks = fetch_tasks(live_settings, "jwt-token-123")
         assert [t.id for t in tasks] == [3, 4, 1]
-        assert [r.path for r in vikunja.requests] == ["/api/v1/projects/3/tasks", "/api/v1/projects/1/tasks"]
+        assert [r.path for r in vikunja.requests] == [
+            "/api/v1/projects/3/tasks",
+            "/api/v1/projects/1/tasks",
+        ]
 
     def test_unknown_project_raises(self, live_settings: Settings) -> None:
         live_settings.project_ids = (1,)

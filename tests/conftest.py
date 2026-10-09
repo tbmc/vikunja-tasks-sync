@@ -1,5 +1,5 @@
 from collections.abc import Iterator
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -13,11 +13,7 @@ from vikunja_sync.vikunja import Project, VikunjaTask
 
 def iso(days: float) -> str:
     """ISO timestamp `days` from now (negative = past), in Vikunja's format."""
-    return (
-        (datetime.now(timezone.utc) + timedelta(days=days))
-        .replace(microsecond=0)
-        .isoformat()
-    )
+    return (datetime.now(UTC) + timedelta(days=days)).replace(microsecond=0).isoformat()
 
 
 def make_task(

@@ -102,7 +102,9 @@ class CalendarService(Protocol):
     def insert_calendar(self, body: CalendarBody) -> CalendarListEntry: ...
     def list_calendars(self, page_token: str | None) -> CalendarListPage: ...
     def get_calendar_list_entry(self, calendar_id: str) -> CalendarListEntry: ...
-    def update_calendar_list_entry(self, entry: CalendarListEntry) -> CalendarListEntry: ...
+    def update_calendar_list_entry(
+        self, entry: CalendarListEntry
+    ) -> CalendarListEntry: ...
     def insert_event(self, calendar_id: str, body: EventBody) -> CreatedEvent: ...
     def patch_event(
         self, calendar_id: str, event_id: str, body: EventBody
@@ -186,7 +188,9 @@ class GoogleCalendarClient:
             .execute()
         )
 
-    def patch_event(self, calendar_id: str, event_id: str, body: EventBody) -> CreatedEvent:
+    def patch_event(
+        self, calendar_id: str, event_id: str, body: EventBody
+    ) -> CreatedEvent:
         return CreatedEvent.model_validate(
             self._api.events()
             .patch(
@@ -235,8 +239,11 @@ def ensure_calendar(service: CalendarService, state: State, settings: Settings) 
         try:
             service.get_calendar(cached_id)
             return cached_id
-        except Exception:
-            pass
+        # Any CalendarService backend error: fall back to lookup by name
+        except Exception as e:  # noqa: BLE001
+            print(
+                f"[INFO] Cached calendar {cached_id} unavailable ({e}), looking up by name"
+            )
     # Find by name
     page_token: str | None = None
     while True:
