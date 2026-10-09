@@ -39,7 +39,9 @@ class EventReminders(GoogleModel):
 
 
 class EventDateTime(GoogleModel):
-    date_time: str
+    # `date_time` for timed events, `date` (YYYY-MM-DD) for all-day events
+    date_time: str | None = None
+    date: str | None = None
 
 
 class PrivateProperties(BaseModel):
@@ -66,6 +68,8 @@ class EventBody(GoogleModel):
     extended_properties: EventExtendedProperties
     source: EventSource
     reminders: EventReminders
+    # RRULE lines; always sent so a patch clears it when a task stops recurring
+    recurrence: list[str] = []
     color_id: str | None = None
 
 

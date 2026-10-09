@@ -9,7 +9,15 @@ from pydantic import ValidationError
 from tests.conftest import iso, make_task
 from tests.fakes import FakeCalendarService
 from vikunja_sync.config import Settings, load_settings
-from vikunja_sync.events import build_event_body, is_overdue, iso_to_utc_dt, task_key
+from vikunja_sync.events import (
+    all_day_dates,
+    all_day_recurrence,
+    build_event_body,
+    is_overdue,
+    iso_to_utc_dt,
+    recurrence_rule,
+    task_key,
+)
 from vikunja_sync.google_calendar import (
     CalendarBody,
     CalendarListEntry,
@@ -24,7 +32,7 @@ from vikunja_sync.google_calendar import (
 from vikunja_sync.ics_export import tasks_to_ics
 from vikunja_sync.state import EventState, State, load_state, save_state
 from vikunja_sync.sync import should_sync
-from vikunja_sync.vikunja import Project, Projects, TaskList, VikunjaTask
+from vikunja_sync.vikunja import Project, Projects, Reminder, TaskList, VikunjaTask
 
 HOME = Projects([Project(id=1, title="Home")])
 
@@ -80,6 +88,25 @@ def test_vikunja_task_wrapped_task_list() -> None:
 def test_project_title_falls_back_to_id() -> None:
     assert HOME.title_of(1) == "Home"
     assert HOME.title_of(7) == "Project 7"
+
+
+def test_vikunja_task_recurrence_fields() -> None:
+    raw = """{
+        "id": 8, "project_id": 10, "created": "2026-10-09T20:29:47+02:00",
+        "repeat_after": 2592000, "repeat_mode": 1,
+        "reminders": [{"reminder": "2026-10-04T12:00:00+02:00", "relative_period": 0, "relative_to": ""}]
+    }"""
+    task = VikunjaTask.model_validate_json(raw)
+    assert task.created == "2026-10-09T20:29:47+02:00"
+    assert (task.repeat_after, task.repeat_mode) == (2592000, 1)
+    assert task.reminders == [Reminder(reminder="2026-10-04T12:00:00+02:00")]
+
+
+def test_vikunja_task_null_or_mistyped_recurrence_fields_get_defaults() -> None:
+    task = VikunjaTask.model_validate_json(
+        '{"id": 1, "project_id": 2, "repeat_after": null, "repeat_mode": "x", "reminders": null}'
+    )
+    assert (task.repeat_after, task.repeat_mode, task.reminders) == (0, 0, [])
 
 
 # ------------------
@@ -295,7 +322,124 @@ def test_build_event_body_wire_format_is_camel_case_without_nulls(
     assert '"extendedProperties"' in wire
     assert '"start":{"dateTime":"2026-05-01T10:00:00+00:00"}' in wire
     assert '"reminders":{"useDefault":true}' in wire
+    assert '"recurrence":[]' in wire
     assert "colorId" not in wire
+
+
+@pytest.mark.parametrize(
+    ("repeat_after", "repeat_mode", "expected"),
+    [
+        (0, 0, None),
+        (604800, 0, "FREQ=WEEKLY;INTERVAL=1"),
+        (1209600, 0, "FREQ=WEEKLY;INTERVAL=2"),
+        (3 * 86400, 0, "FREQ=DAILY;INTERVAL=3"),
+        (3600, 0, "FREQ=DAILY;INTERVAL=1"),
+        (86400, 2, "FREQ=DAILY;INTERVAL=1"),
+        (2592000, 1, "FREQ=MONTHLY"),
+        (0, 1, "FREQ=MONTHLY"),
+    ],
+)
+def test_recurrence_rule(
+    repeat_after: int, repeat_mode: int, expected: str | None
+) -> None:
+    task = make_task(1, repeat_after=repeat_after, repeat_mode=repeat_mode)
+    assert recurrence_rule(task) == expected
+
+
+def test_all_day_dates_are_the_absolute_reminder_days() -> None:
+    task = make_task(
+        1,
+        reminders=[
+            Reminder(reminder="2026-10-08T12:00:00+02:00"),
+            Reminder(reminder="2026-10-04T12:00:00+02:00"),
+            Reminder(reminder="2026-10-04T18:00:00+02:00"),
+            Reminder(reminder="2026-09-01T12:00:00+02:00", relative_to="due_date"),
+        ],
+    )
+    assert all_day_dates(task, "Europe/Paris") == [
+        datetime(2026, 10, 4).date(),
+        datetime(2026, 10, 8).date(),
+    ]
+
+
+def test_all_day_dates_recurring_without_reminder_starts_on_creation_day() -> None:
+    task = make_task(1, repeat_after=604800, created="2026-10-09T23:30:00Z")
+    assert all_day_dates(task, "Europe/Paris") == [datetime(2026, 10, 10).date()]
+    assert all_day_dates(task, "UTC") == [datetime(2026, 10, 9).date()]
+
+
+def test_all_day_dates_empty_without_reminder_nor_recurrence() -> None:
+    assert all_day_dates(make_task(1), "UTC") == []
+    assert all_day_dates(make_task(1, repeat_after=604800, created=""), "UTC") == []
+
+
+def test_all_day_recurrence() -> None:
+    days = [datetime(2026, 10, d).date() for d in (4, 8, 12)]
+    assert all_day_recurrence(make_task(1), days[:1]) == []
+    assert all_day_recurrence(make_task(1, repeat_mode=1), days) == [
+        "RRULE:FREQ=MONTHLY",
+        "RDATE;VALUE=DATE:20261008,20261012",
+    ]
+
+
+def test_should_sync_task_with_only_a_reminder() -> None:
+    task = make_task(1, reminders=[Reminder(reminder="2026-10-10T12:00:00+02:00")])
+    assert should_sync(task, None) is True
+
+
+def test_should_sync_task_with_only_a_relative_reminder_is_skipped() -> None:
+    reminder = Reminder(reminder="2026-10-10T12:00:00+02:00", relative_to="due_date")
+    assert should_sync(make_task(1, reminders=[reminder]), None) is False
+
+
+def test_should_sync_recurring_task_without_due_date() -> None:
+    assert should_sync(make_task(1, repeat_after=604800), None) is True
+
+
+def test_build_event_body_recurring_without_due_is_all_day_recurring_event(
+    settings: Settings,
+) -> None:
+    task = make_task(1, repeat_mode=1, created="2026-10-09T20:29:47+02:00")
+    body = build_event_body(task, "Home", settings)
+    assert body is not None
+    assert body.start == EventDateTime(date="2026-10-09")
+    assert body.end == EventDateTime(date="2026-10-10")
+    assert body.recurrence == ["RRULE:FREQ=MONTHLY"]
+    wire = body.model_dump_json(by_alias=True, exclude_none=True)
+    assert '"start":{"date":"2026-10-09"}' in wire
+
+
+def test_build_event_body_reminder_only_is_single_all_day_event(
+    settings: Settings,
+) -> None:
+    task = make_task(1, reminders=[Reminder(reminder="2026-10-11T10:00:00+02:00")])
+    body = build_event_body(task, "Home", settings)
+    assert body is not None
+    assert body.start == EventDateTime(date="2026-10-11")
+    assert body.end == EventDateTime(date="2026-10-12")
+    assert body.recurrence == []
+
+
+def test_build_event_body_recurring_reminder_starts_series_on_reminder_day(
+    settings: Settings,
+) -> None:
+    task = make_task(
+        1, repeat_mode=1, reminders=[Reminder(reminder="2026-10-04T12:00:00+02:00")]
+    )
+    body = build_event_body(task, "Home", settings)
+    assert body is not None
+    assert body.start == EventDateTime(date="2026-10-04")
+    assert body.recurrence == ["RRULE:FREQ=MONTHLY"]
+
+
+def test_build_event_body_recurring_with_due_date_keeps_timed_event(
+    settings: Settings,
+) -> None:
+    task = make_task(1, repeat_after=604800, due_date="2026-05-01T10:00:00Z")
+    body = build_event_body(task, "Home", settings)
+    assert body is not None
+    assert body.start == EventDateTime(date_time="2026-05-01T10:00:00+00:00")
+    assert body.recurrence == []
 
 
 # ------------------
@@ -374,6 +518,34 @@ def test_tasks_to_ics_start_after_due_does_not_crash(
         1, start_date="2026-05-02T09:00:00Z", due_date="2026-05-01T10:00:00Z"
     )
     tasks_to_ics([task], HOME, settings.ics_output)
+
+
+def test_tasks_to_ics_reminder_days_are_all_day_with_rdate(
+    settings: Settings, tmp_path: Path
+) -> None:
+    task = make_task(
+        1,
+        reminders=[
+            Reminder(reminder="2026-10-04T12:00:00+02:00"),
+            Reminder(reminder="2026-10-08T12:00:00+02:00"),
+        ],
+    )
+    tasks_to_ics([task], HOME, settings.ics_output, "Europe/Paris")
+    content = (tmp_path / "calendar.ics").read_text(encoding="utf-8")
+    assert "DTSTART;VALUE=DATE:20261004" in content
+    assert "RDATE;VALUE=DATE:20261008" in content
+    assert "RRULE" not in content
+
+
+def test_tasks_to_ics_recurring_without_due_is_all_day_with_rrule(
+    settings: Settings, tmp_path: Path
+) -> None:
+    task = make_task(1, repeat_after=604800, created="2026-10-09T20:29:47+02:00")
+    tasks_to_ics([task], HOME, settings.ics_output, "Europe/Paris")
+    content = (tmp_path / "calendar.ics").read_text(encoding="utf-8")
+    assert content.count("BEGIN:VEVENT") == 1
+    assert "DTSTART;VALUE=DATE:20261009" in content
+    assert "RRULE:FREQ=WEEKLY;INTERVAL=1" in content
 
 
 # ------------------

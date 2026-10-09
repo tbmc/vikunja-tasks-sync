@@ -10,12 +10,13 @@ from vikunja_sync.config import Settings
 from vikunja_sync.google_calendar import (
     CalendarBody,
     EventBody,
+    EventDateTime,
     EventReminder,
     EventReminders,
 )
 from vikunja_sync.state import EventState, State
 from vikunja_sync.sync import run
-from vikunja_sync.vikunja import VikunjaTask
+from vikunja_sync.vikunja import Reminder, VikunjaTask
 
 
 def read_state(settings: Settings) -> State:
@@ -222,6 +223,40 @@ def test_sync_with_api_token_skips_login(
     assert len(calendar_events(google)) == 4
     assert all(r.method == "GET" for r in tasks.requests)
     assert all(r.authorization == "Bearer tk_abc" for r in tasks.requests)
+
+
+def test_recurring_and_reminder_only_tasks_without_due_date_are_all_day_events(
+    vikunja: FakeVikunja, google: FakeCalendarService, live_settings: Settings
+) -> None:
+    vikunja.tasks = [
+        VikunjaTask(
+            id=8,
+            project_id=1,
+            title="Virement maison",
+            created="2026-10-09T20:29:47+02:00",
+            repeat_after=2592000,
+            repeat_mode=1,
+        ),
+        VikunjaTask(id=9, project_id=1, title="One-off without date"),
+        VikunjaTask(
+            id=10,
+            project_id=1,
+            title="Payer place hellfest",
+            reminders=[Reminder(reminder="2026-10-11T10:00:00+02:00")],
+        ),
+    ]
+    run(live_settings)
+    events = {e.summary: e for e in calendar_events(google).values()}
+    assert sorted(events) == ["[Home] Payer place hellfest", "[Home] Virement maison"]
+    recurring = events["[Home] Virement maison"]
+    assert recurring.start == EventDateTime(date="2026-10-09")
+    assert recurring.recurrence == ["RRULE:FREQ=MONTHLY"]
+    reminder_only = events["[Home] Payer place hellfest"]
+    assert reminder_only.start == EventDateTime(date="2026-10-11")
+    assert reminder_only.recurrence == []
+    assert sorted(read_state(live_settings).events) == ["1:10", "1:8"]
+    ics = Path(live_settings.ics_output).read_text(encoding="utf-8")
+    assert "RRULE:FREQ=MONTHLY" in ics
 
 
 def test_bad_credentials_abort_before_touching_google(

@@ -24,8 +24,27 @@ def _str_or_default(value: object) -> object:
     return value
 
 
-# A string field falling back to its default when missing, null or of another type
+def _int_or_default(value: object) -> object:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise PydanticUseDefault()
+    return value
+
+
+def _list_or_default(value: object) -> object:
+    if not isinstance(value, list):
+        raise PydanticUseDefault()
+    return value
+
+
+# Fields falling back to their default when missing, null or of another type
 type LenientStr = Annotated[str, BeforeValidator(_str_or_default)]
+type LenientInt = Annotated[int, BeforeValidator(_int_or_default)]
+
+
+class Reminder(BaseModel):
+    reminder: LenientStr = ""
+    # Empty for absolute reminders, else the date the reminder is relative to
+    relative_to: LenientStr = ""
 
 
 class VikunjaTask(BaseModel):
@@ -37,6 +56,12 @@ class VikunjaTask(BaseModel):
     due_date: LenientStr = ""
     start_date: LenientStr = ""
     updated: LenientStr = ""
+    created: LenientStr = ""
+    # Seconds between occurrences (0 = not recurring)
+    repeat_after: LenientInt = 0
+    # 0 = every `repeat_after`, 1 = monthly, 2 = `repeat_after` from completion
+    repeat_mode: LenientInt = 0
+    reminders: Annotated[list[Reminder], BeforeValidator(_list_or_default)] = []
 
 
 class TaskList(BaseModel):

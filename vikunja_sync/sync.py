@@ -5,9 +5,11 @@ from pathlib import Path
 from vikunja_sync import vikunja
 from vikunja_sync.config import Settings
 from vikunja_sync.events import (
+    absolute_reminders,
     build_event_body,
     is_overdue,
     iso_to_utc_dt,
+    recurrence_rule,
     task_key,
 )
 from vikunja_sync.google_calendar import (
@@ -24,11 +26,12 @@ from vikunja_sync.vikunja import Projects, VikunjaTask
 
 def should_sync(task: VikunjaTask, prev: EventState | None) -> bool:
     """
-    - tasks without a due date are skipped
+    - tasks without a due date are skipped, unless recurring or with a fixed-date reminder
     - done tasks are always upserted (created/updated as done)
     - overdue tasks already synced are skipped unless they changed
     """
-    if not iso_to_utc_dt(task.due_date):
+    has_date = iso_to_utc_dt(task.due_date) or absolute_reminders(task)
+    if not has_date and not recurrence_rule(task):
         return False
     unchanged = prev is not None and not prev.done and prev.last_updated == task.updated
     return not (is_overdue(task) and unchanged)
@@ -90,7 +93,7 @@ def run(settings: Settings) -> None:
     tasks = vikunja.fetch_tasks(settings, token)
 
     sync_events(service, cal_id, tasks, projects, state, settings)
-    tasks_to_ics(tasks, projects, settings.ics_output)
+    tasks_to_ics(tasks, projects, settings.ics_output, settings.timezone)
 
     save_state(settings.state_file, state)
     print(

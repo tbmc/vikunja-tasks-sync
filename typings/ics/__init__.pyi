@@ -2,10 +2,12 @@ from collections.abc import Iterator
 from datetime import datetime
 
 from arrow import Arrow
+from ics.grammar.parse import Container
 
 class Event:
     name: str | None
     description: str | None
+    extra: Container
     def __init__(self) -> None: ...
     @property
     def begin(self) -> Arrow | None: ...
@@ -15,6 +17,7 @@ class Event:
     def end(self) -> Arrow | None: ...
     @end.setter
     def end(self, value: datetime | Arrow | None) -> None: ...
+    def make_all_day(self) -> None: ...
 
 class Calendar:
     events: set[Event]

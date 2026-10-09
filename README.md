@@ -5,10 +5,11 @@ Each task becomes a calendar event linked to its project, with reminders for upc
 
 ### Features
 
-* Logs in to Vikunja and fetches all (or selected) projects
+* Authenticates to Vikunja (API token or login) and fetches all (or selected) projects
 * Creates or updates Google Calendar events (no duplicates)
 * Marks done tasks as ✅ and colors them green
 * Skips unchanged overdue tasks
+* Shows tasks without a due date as all-day events on their reminder days; recurring ones repeat (starting on their first reminder, else their creation date), and move forward with their reminders when completed in Vikunja
 * Adds popup reminders: 1 week, 3 days, 2 days, 1 day, and same day
 * Exports an optional `.ics` backup file
 * Tracks state locally (`.state/state.json`)

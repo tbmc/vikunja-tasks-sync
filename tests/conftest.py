@@ -8,7 +8,7 @@ from tests.fakes import FakeCalendarService, FakeVikunja, serve_vikunja
 from vikunja_sync import sync
 from vikunja_sync.config import Settings
 from vikunja_sync.google_calendar import CalendarService
-from vikunja_sync.vikunja import Project, VikunjaTask
+from vikunja_sync.vikunja import Project, Reminder, VikunjaTask
 
 
 def iso(days: float) -> str:
@@ -26,6 +26,10 @@ def make_task(
     due_date: str = "0001-01-01T00:00:00Z",
     start_date: str = "0001-01-01T00:00:00Z",
     updated: str = "2026-01-01T10:00:00Z",
+    created: str = "2026-01-01T09:00:00Z",
+    repeat_after: int = 0,
+    repeat_mode: int = 0,
+    reminders: list[Reminder] | None = None,
 ) -> VikunjaTask:
     return VikunjaTask(
         id=task_id,
@@ -36,6 +40,10 @@ def make_task(
         due_date=due_date,
         start_date=start_date,
         updated=updated,
+        created=created,
+        repeat_after=repeat_after,
+        repeat_mode=repeat_mode,
+        reminders=reminders or [],
     )
 
 
