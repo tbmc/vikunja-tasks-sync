@@ -1,5 +1,5 @@
 # ---------- Stage 1: build the virtualenv with uv ----------
-FROM python:3.14-slim AS builder
+FROM python:3.15-slim AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:0.9.10 /uv /bin/uv
 
@@ -17,7 +17,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project
 
 # ---------- Stage 2: minimal runtime image ----------
-FROM python:3.14-slim AS runtime
+FROM python:3.15-slim AS runtime
 
 RUN useradd --create-home --uid 1000 app
 
